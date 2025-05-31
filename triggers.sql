@@ -206,13 +206,13 @@ BEGIN
             SET improvement_message = 'Excellence Path: Your strong performance indicates you are ready for advanced challenges. Consider exploring specialized topics, research opportunities, or leadership roles in your area of strength to further excel.';
         END IF;
         
-        -- Generate subject performance summary with DISTINCT to avoid duplicates
+        -- Generate subject performance summary with proper ordering and latest scores
         SELECT GROUP_CONCAT(
             subject_details
-            ORDER BY score DESC SEPARATOR ', '
+            ORDER BY score DESC
         ) INTO subject_performance_summary
         FROM (
-            SELECT DISTINCT
+            SELECT 
                 s.subject_name,
                 pt.score,
                 CONCAT(s.subject_name, ': ',
@@ -225,11 +225,16 @@ BEGIN
                     END,
                     ' (', ROUND(pt.score * 100, 1), '%)'
                 ) as subject_details
-            FROM Placement_tests pt
-            JOIN Subjects s ON pt.subject_id = s.id
+            FROM (
+                SELECT subject_id, MAX(id) as latest_id
+                FROM Placement_tests
+                WHERE student_id = NEW.student_id
+                GROUP BY subject_id
+            ) latest 
+            JOIN Placement_tests pt ON pt.id = latest.latest_id
+            JOIN Subjects s ON s.id = pt.subject_id
             WHERE pt.student_id = NEW.student_id
-            GROUP BY s.subject_name, pt.score
-        ) AS unique_subjects;
+        ) ranked_subjects;
         
         -- Determine recommended department based on best performing subjects
         -- Get department that matches the best subject areas using a derived table join
@@ -263,41 +268,42 @@ BEGIN
             END IF;
         END IF;
         
-        -- Build the comprehensive report
+        -- Build the comprehensive report in Markdown format
         SET detailed_report = CONCAT(
-            '=== PLACEMENT TEST REPORT ===\n\n',
-            'Dear ', student_name, ',\n\n',
+            '# Placement Test Report\n\n',
+            '### Dear ', student_name, ',\n\n',
             'Here is your comprehensive placement test report based on your performance across all subjects.\n\n',
             
-            '📊 PERFORMANCE SUMMARY:\n',
-            '• Overall Average Score: ', ROUND(avg_score * 100, 1), '%\n',
-            '• Performance Level: ', v_current_level, '\n',
-            '• Best Subject: ', best_subject_name, ' (', ROUND(highest_score * 100, 1), '%)\n',
-            '• Total Subjects Evaluated: ', total_subjects, '\n\n',
+            '## 📊 Performance Summary\n\n',
+            '- **Overall Average Score:** ', ROUND(avg_score * 100, 1), '%\n',
+            '- **Performance Level:** ', v_current_level, '\n',
+            '- **Best Subject:** ', best_subject_name, ' (', ROUND(highest_score * 100, 1), '%)\n',
+            '- **Total Subjects Evaluated:** ', total_subjects, '\n\n',
             
-            '📈 DETAILED SUBJECT BREAKDOWN:\n',
+            '## 📈 Detailed Subject Breakdown\n\n',
             subject_performance_summary, '\n\n',
             
-            '🎯 PERSONALIZED FEEDBACK:\n',
+            '## 🎯 Personalized Feedback\n\n',
             encouragement_message, '\n\n',
             
-            '💡 RECOMMENDATIONS FOR GROWTH:\n',
+            '## 💡 Recommendations for Growth\n\n',
             improvement_message, '\n\n',
             
-            '🎓 DEPARTMENT RECOMMENDATION:\n',
-            'Based on your performance pattern and strengths, we recommend exploring programs in our recommended department. Your strong performance in ', best_subject_name, ' and overall academic profile suggest you would thrive in this field.\n\n',
+            '## 🎓 Department Recommendation\n\n',
+            CONCAT('Based on your performance pattern and strengths, we recommend exploring programs in our recommended department. Your strong performance in **', best_subject_name, '** and overall academic profile suggest you would thrive in this field.\n\n'),
             
-            '🚀 NEXT STEPS:\n',
+            '## 🚀 Next Steps\n\n',
             '1. Meet with an academic advisor to discuss your results\n',
             '2. Explore course offerings in your recommended department\n',
             '3. Consider your personal interests alongside these recommendations\n',
             '4. Set specific goals for areas needing improvement\n\n',
             
-            'Remember, ', student_name, ', these results are a starting point for your academic journey. Your dedication, effort, and passion will ultimately determine your success. We believe in your potential and are here to support your growth.\n\n',
+            '---\n\n',
+            '_Remember, ', student_name, ', these results are a starting point for your academic journey. Your dedication, effort, and passion will ultimately determine your success. We believe in your potential and are here to support your growth._\n\n',
             
-            'Best wishes for your academic future!\n',
-            'Academic Assessment Team\n',
-            '================================'
+            '**Best wishes for your academic future!**\n\n',
+            '_Academic Assessment Team_\n\n',
+            '---'
         );
         
         -- Insert the detailed recommendation
